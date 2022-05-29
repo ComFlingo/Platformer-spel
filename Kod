@@ -1,0 +1,321 @@
+# Importerar pygame och sys
+import pygame, sys
+
+
+
+# Allt uppdelat i klasser
+# Klassen för spelet med 2 funktioner
+class Spel():
+
+    # Funktion där level och status definieras inom denna klass
+    def __init__(self):
+        self.level = Level(screen)
+        self.status = 'level'
+
+    # Run funktion med if-sats som gör att leveln körs om self.status = 'level'
+    def run(self):
+        if self.status == 'level':
+            self.level.run()
+
+
+
+# Klassen för leveln
+class Level:
+
+    # Funktion för att sätta upp leveln och definiera att display_surface i denna klass är
+    # samma som display_surface i hela programmet
+    def __init__(self, display_surface):
+        self.setup_level()
+        self.display_surface = display_surface
+
+        # Ställer default värden på hur mycket karaktären skiftar av sig själv på båda koordinat-axlarna
+        self.x_shift = 0
+        self.y_shift = 0
+
+    # Definierar setup_level
+    def setup_level(self):
+
+        # Lägger in tiles i en grupp av sprites och spelaren i en egen grupp för en sprite
+        self.tiles = pygame.sprite.Group()
+        self.player = pygame.sprite.GroupSingle()
+
+        # Använder enumerate för att lättare se vart allt i listan level_data ligger och tar det i rader
+        for row_index, row in enumerate(level_data):
+            # Använder datan för i vilken rad allt ligger och ger varje plats i listan en kolumn
+            # för att kunna använda listan som en level layout
+            for col_index, col in enumerate(row):
+                # Definierar vad x och y koordinaterna är genom att använda dessa och storleken av varje tile
+                x = col_index * tile_size
+                y = (row_index * tile_size)  # - ((len(level_data) - fov) * tile_size)
+
+                # Om det finns ett X i listan omvandlas den till en tile på samma position i leveln
+                if col == 'X':
+                    tile = Tile((x, y))
+                    self.tiles.add(tile)
+                # Om det finns ett P i listen omvandlas det till det man spelar som på samma position i leveln
+                if col == 'P':
+                    player = Player((x, y))
+                    self.player.add(player)
+
+    # Funktion för vertikala kollisioner
+    # Definierar playern som player.sprite och lägger till gravitation
+    def vertical_movement_collision(self):
+        player = self.player.sprite
+        player.apply_gravity()
+
+        # För alla sprites i tiles.sprites
+        # Om en sprite kolliderar med playern och om playerns y-riktning är mer än 0 (alltså de faller),
+        # playerns nedersta punkt = tiles högsta punkt och att playern står på marken blir sant
+        for sprite in self.tiles.sprites():
+            if sprite.rect.colliderect(player.rect):
+                if player.direction.y > 0:
+                    player.rect.bottom = sprite.rect.top
+                    player.on_ground = True
+                # Annars, om playerns y-riktning är mindre än 0 (alltså de hoppar),
+                # playerns högsta punkt = tiles nedersta punkt
+                elif player.direction.y < 0:
+                    player.rect.top = sprite.rect.bottom
+                # Sätter playerns default y-riktning till 0
+                player.direction.y = 0
+
+        # Om playern är på marken och deras y-riktning är mer än 1 eller mindre än 0, play.on_ground blir falskt
+        if player.on_ground and player.direction.y > 1 or player.direction.y < 0:
+            player.on_ground = False
+
+    # Funktion för horizontella kollisioner
+    # Definierar playern som player.sprite och playerns x koordinat
+    def horizontal_movement_collision(self):
+        player = self.player.sprite
+        player.rect.x += player.direction.x * player.speed
+
+        # För alla sprites i tiles.sprites
+        # Om en sprite kolliderar med playern och om playerns x-riktning är mer än 0 (alltså de rör sig höger),
+        # playerns högra punkt = tiles vänstra punkt
+        for sprite in self.tiles.sprites():
+            if sprite.rect.colliderect(player.rect):
+                if player.direction.x > 0:
+                    player.rect.right = sprite.rect.left
+                # Annars, om playerns x-riktning är mindre än 0 (alltså de rör sig vänster),
+                # playerns vänstra punkt = tiles högra punkt
+                elif player.direction.x < 0:
+                    player.rect.left = sprite.rect.right
+
+    # Funktion för rörelse
+    # Kallar på vertikala och horizontella kollisioner
+    def run(self):
+        self.vertical_movement_collision()
+        self.horizontal_movement_collision()
+
+        # Updaterar vart tiles och playern är baserat på hur man rört sig
+        self.tiles.update(self.x_shift, self.y_shift)
+        self.player.update()
+
+        # Definierar att toppen och den mest vänstra punkten av mappen har koordinat-värdena 0
+        # Definierar koordinat-värdena av botten och den mest högra punkten av mappen genom att
+        # använda storleken av tiles och längden på listan
+        map_left = 0
+        map_right = len(level_data[0]) * tile_size
+        map_top = 0
+        map_bottom = len(level_data) * tile_size
+
+
+        # Funktioner så att kameran stannar över hela leveln genom att använda playerns
+        # position och skärmens mittpunkt samt bredd
+
+        # Definierar x-koordinaten för kamerans position
+        camera_x = -self.player.sprite.rect.centerx + self.display_surface.get_rect().centerx
+        # Om x-värdet på playerns mitt är mindre än värdet på mappens mest vänstra punkt + mittenpunkten
+        # av skärmen så blir kamerans x-värde = -mappens vänstra punkt
+        if self.player.sprite.rect.centerx < map_left + self.display_surface.get_rect().centerx:
+            camera_x = -map_left
+        # Om x-värdet på playerns mitt är mer än värdet på mappens mest högra punkt - mittenpunkten av skärmen
+        # så blir kamerans x-värde = -(mappens högra punkt - skärmens bredd)
+        if self.player.sprite.rect.centerx > map_right - self.display_surface.get_rect().centerx:
+            camera_x = -(map_right - self.display_surface.get_rect().width)
+
+        # Definierar y-koordinaten för kamerans position
+        camera_y = -self.player.sprite.rect.centery + self.display_surface.get_rect().centery
+        # Om y-värdet på playerns mitt är mindre än värdet på mappens topp + mittenpunkten av skärmen
+        # så blir kamerans y-värde = -mappens topp
+        if self.player.sprite.rect.centery < map_top + self.display_surface.get_rect().centery:
+            camera_y = -map_top
+        # Om y-värdet på playerns mitt är mer än värdet på mappens botten - mittenpunkten av skärmen
+        # så blir kamerans y-värde = -(mappens botten - skärmens höjd)
+        if self.player.sprite.rect.centery > map_bottom - self.display_surface.get_rect().centery:
+            camera_y = -(map_bottom - self.display_surface.get_rect().height)
+
+        # Använder koordinaterna för att placera kameran
+        camera = (camera_x, camera_y)
+
+        # För varje item i tiles ritar den in en tile när spelet körs igång
+        for item in self.tiles:
+            item.draw(self.display_surface, camera)
+        # Samma sak fast för playern
+        self.player.sprite.draw(self.display_surface, camera)
+
+
+
+# Klass för tiles
+class Tile(pygame.sprite.Sprite):
+
+    def __init__(self, pos):
+        super().__init__()
+        # Definierar image som det en tile ska vara; storlek, färg
+        # samt definierar x och y så att placeringarna fungerar
+        self.image = pygame.Surface((tile_size, tile_size))
+        self.image.fill('gray')
+        self.rect = self.image.get_rect(topleft=pos)
+        self.x = self.rect.x
+        self.y = self.rect.y
+
+    def draw(self, screen, camera):
+        screen.blit(self.image, self.rect.move(camera))
+
+
+# Klass för playern
+class Player(pygame.sprite.Sprite):
+
+    def __init__(self, pos):
+        super().__init__()
+        # Playerns utseende
+        self.image = pygame.Surface((32, 64))
+        self.image.fill('red')
+        self.rect = self.image.get_rect(topleft=pos)
+
+        # Värden på hur snabbt playern kan förflytta sig samt gravitation
+        self.direction = pygame.math.Vector2(0, 0)
+        self.speed = 7.5
+        self.gravity = 0.67
+        self.jump_speed = -16
+
+        # Sätter on_ground som falkst om inte villkoren längre upp är uppfyllda
+        self.on_ground = False
+
+    # Funktion som definierar alla inputs
+    def get_inputs(self):
+        keys = pygame.key.get_pressed()
+
+        # Om space är intryckt, hoppa
+        if keys[pygame.K_SPACE]:
+            self.jump()
+        # Om D eller högerpil är intryckt, förflytta höger
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            self.direction.x = 1
+        # Annars, om A eller väsnterpil är intryckt, förflytta vänster
+        elif keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            self.direction.x = -1
+        # Annars sätts hur mycket man förflyttar sig till 0
+        else:
+            self.direction.x = 0
+
+    # Funktion för att lägga till gravitation till hur mycket man förflyttar sig på y-axeln
+    def apply_gravity(self):
+        self.direction.y += self.gravity
+        self.rect.y += self.direction.y
+
+    # Funktion för att hoppa
+    def jump(self):
+        # Om on_ground är sant så är playerns y-axel förflyttning = hastigheten av ett hopp
+        if self.on_ground:
+            self.direction.y = self.jump_speed
+
+    # Funktion för att få input
+    def update(self):
+        self.get_inputs()
+
+    def draw(self, screen, camera):
+        screen.blit(self.image, self.rect.move(camera))
+
+
+
+# Värden för storlek av tiles och skärmen samt fov
+tile_size = 64
+fov = 15
+screen_width = 1200
+screen_height = tile_size * fov
+
+# Layout för leveln, går att customisa
+level_data = [
+    '                       ',
+    '                       ',
+    '                       ',
+    '         XXXXXX        ',
+    '                       ',
+    '                  X    ',
+    '                 XX    ',
+    '      XXX        X     ',
+    '      X                ',
+    '              X        ',
+    '  XX          XX       ',
+    '             XX        ',
+    '                    X  ',
+    '      X                ',
+    '  XX     XX            ',
+    '   XX    X       XX    ',
+    '             X         ',
+    '             XXX       ',
+    '          XX      X    ',
+    '                 XX    ',
+    '      XXX        X     ',
+    '      X                ',
+    '              X        ',
+    '  XX          XX       ',
+    '             XX        ',
+    '                    X  ',
+    '      X                ',
+    '  XX     XX            ',
+    '   XX    X       XX    ',
+    '             X         ',
+    '             XXX       ',
+    '          XX      X    ',
+    '                 XX    ',
+    '      XXX        X     ',
+    '      X                ',
+    '              X        ',
+    '  XX          XX       ',
+    '             XX        ',
+    '                    X  ',
+    '      X                ',
+    '  XX     XX            ',
+    '   XX    X       XX    ',
+    '             X         ',
+    '             XXX       ',
+    '          XX      X    ',
+    '                 XX    ',
+    '      XXX        X     ',
+    '      X                ',
+    '              X        ',
+    '  XX          XX       ',
+    '             XX        ',
+    '                    X  ',
+    '      X                ',
+    '  XX     XX            ',
+    '   XX    X       XX    ',
+    '             X         ',
+    '             XXX       ',
+    '  XX     P          X  ',
+    ' XXX    XX          XX ',
+    ' XXXX   XXXX    XX XXX ',
+    ' XXXX   XXXX X  XX XXX ']
+
+
+
+# Sätter höjd och bredd på skärmen samt definierar clock och spel så att de kan användas
+screen = pygame.display.set_mode((screen_width, screen_height))
+clock = pygame.time.Clock()
+spel = Spel()
+
+# While True funktion för att köra spelet
+while True:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+
+    # Fyller bakgrunden med svart
+    screen.fill('black')
+    spel.run()
+
+    # Får skärmen att updatera
+    pygame.display.update()
+    clock.tick(60)
